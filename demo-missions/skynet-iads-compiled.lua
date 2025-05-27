@@ -1,4 +1,5 @@
 env.info("--- SKYNET VERSION: 3.3.0 | BUILD TIME: 29.12.2023 2311Z ---")
+env.info("--- Tracking DD and Civ ID v2 ---")
 do
 --this file contains the required units per sam type
 samTypesDB = {	
@@ -812,6 +813,13 @@ samTypesDB['S-300PMU2'] = {
 --]]
 end
 
+-- EDIT #2 Helper function to check if a unit is civilian
+function isCivilian(unitName) -- Global Function, should it be?
+    if type(unitName) == "string" then
+        return unitName:sub(1, 3):upper() == "CIV"
+    end
+    return false
+end
 
 
 do
@@ -1459,6 +1467,32 @@ function SkynetIADS:getCommandCenters()
 	return self.commandCenters
 end
 
+-- EDIT #6 - Helper
+--Debugging Helper function, left in because why not
+
+function safeDumpTable(t)
+    if not t then
+        return "nil"
+    end
+    if type(t) ~= "table" then
+        return tostring(t)
+    end
+
+    local result = "{ "
+    for k, v in pairs(t) do
+        local valueStr = tostring(v)
+        result = result .. tostring(k) .. "=" .. valueStr .. ", "
+    end
+    result = result .. "}"
+    return result
+end
+
+
+
+-- EDIT #3 Setup Tracking Arrays
+-- Global array to store radar contact data
+redRadarContacts = redRadarContacts or {}
+blueRadarContacts = blueRadarContacts or {}
 
 function SkynetIADS.evaluateContacts(self)
 
@@ -1478,6 +1512,70 @@ function SkynetIADS.evaluateContacts(self)
 			local contacts = samSite:getDetectedTargets()
 			for j = 1, #contacts do
 				local contact = contacts[j]
+				-- EDIT # 7 Sorting SAM contacts into the tracking tables.
+				if contact and contact:isExist() then
+					local unitName = contact:getName()
+					local team_alegence
+					if contact.dcsRepresentation and contact.dcsRepresentation:getCoalition() then
+						-- env.info(unitName .. "was marked as team 1 or 2")
+						team_alegence = contact.dcsRepresentation:getCoalition()
+					else
+						-- env.info(unitName .. " was marked as team 0/NEUTRAL")
+						team_alegence = 0						
+					end
+					if team_alegence == 1 then
+						local previous_contacts = redRadarContacts[unitName]
+						local position_history = {}
+					
+						if previous_contacts and previous_contacts.pos_tracking then
+							position_history = previous_contacts.pos_tracking
+						end
+					
+						table.insert(position_history, contact.position)
+					
+						redRadarContacts[unitName] = {
+							dcsRadarTarget = contact.dcsRadarTarget,
+							abstractRadarElementsDetected = contact.abstractRadarElementsDetected,
+							civilian = isCivilian(unitName),
+							lastTimeSeen = contact.lastTimeSeen,
+							pos_tracking = position_history,
+							current_position = contact.position,
+							dcsRepresentation = contact.dcsRepresentation,
+							typeName = contact.typeName,
+							contactAlive = "true"
+							}
+					elseif team_alegence == 2 then
+						local previous_contacts = blueRadarContacts[unitName]
+						local position_history = {}
+					
+						if previous_contacts and previous_contacts.pos_tracking then
+							position_history = previous_contacts.pos_tracking
+						end
+					
+						table.insert(position_history, contact.position)
+					
+						blueRadarContacts[unitName] = {
+							dcsRadarTarget = contact.dcsRadarTarget,
+							abstractRadarElementsDetected = contact.abstractRadarElementsDetected,
+							civilian = isCivilian(unitName),
+							lastTimeSeen = contact.lastTimeSeen,
+							pos_tracking = position_history,
+							current_position = contact.position,
+							dcsRepresentation = contact.dcsRepresentation,
+							typeName = contact.typeName,
+							contactAlive = "true"
+						}
+					elseif team_alegence == 0 then
+						env.info("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! - Contact Was Declared Team 0")
+					end
+				elseif contact and not contact:isExist() then
+					local unitName = contact:getName()
+					if redRadarContacts[unitName] then
+						redRadarContacts[unitName].contactAlive = false
+					elseif blueRadarContacts[unitName] then
+						blueRadarContacts[unitName].contactAlive = false
+					end
+				end				
 				self:mergeContact(contact)
 			end
 		end
@@ -1488,7 +1586,8 @@ function SkynetIADS.evaluateContacts(self)
 	for i = 1, #ewRadars do
 		local ewRadar = ewRadars[i]
 		--call go live in case ewRadar had to shut down (HARM attack)
-		ewRadar:goLive()
+		ewRadar:goEWLive()
+		--ewRadar:goLive()
 		-- if an awacs has traveled more than a predeterminded distance we update the autonomous state of the SAMs
 		if getmetatable(ewRadar) == SkynetIADSAWACSRadar and ewRadar:isUpdateOfAutonomousStateOfSAMSitesRequired() then
 			self:buildRadarCoverageForEarlyWarningRadar(ewRadar)
@@ -1506,6 +1605,71 @@ function SkynetIADS.evaluateContacts(self)
 			end
 			for j = 1, #ewContacts do
 				local contact = ewContacts[j]
+				
+				--EDIT # 9 - Add DB tracking to EW function
+				if contact and contact:isExist() then
+					local unitName = contact:getName()
+					local team_alegence
+					if contact.dcsRepresentation and contact.dcsRepresentation:getCoalition() then
+						-- env.info(unitName .. "was marked as team 1 or 2")
+						team_alegence = contact.dcsRepresentation:getCoalition()
+					else
+						-- env.info(unitName .. " was marked as team 0/NEUTRAL")
+						team_alegence = 0						
+					end
+					if team_alegence == 1 then
+						local previous_contacts = redRadarContacts[unitName]
+						local position_history = {}
+					
+						if previous_contacts and previous_contacts.pos_tracking then
+							position_history = previous_contacts.pos_tracking
+						end
+					
+						table.insert(position_history, contact.position)
+					
+						redRadarContacts[unitName] = {
+							dcsRadarTarget = contact.dcsRadarTarget,
+							abstractRadarElementsDetected = contact.abstractRadarElementsDetected,
+							civilian = isCivilian(unitName),
+							lastTimeSeen = contact.lastTimeSeen,
+							pos_tracking = position_history,
+							current_position = contact.position,
+							dcsRepresentation = contact.dcsRepresentation,
+							typeName = contact.typeName,
+							contactAlive = "true"
+							}
+					elseif team_alegence == 2 then
+						local previous_contacts = blueRadarContacts[unitName]
+						local position_history = {}
+					
+						if previous_contacts and previous_contacts.pos_tracking then
+							position_history = previous_contacts.pos_tracking
+						end
+					
+						table.insert(position_history, contact.position)
+					
+						blueRadarContacts[unitName] = {
+							dcsRadarTarget = contact.dcsRadarTarget,
+							abstractRadarElementsDetected = contact.abstractRadarElementsDetected,
+							civilian = isCivilian(unitName),
+							lastTimeSeen = contact.lastTimeSeen,
+							pos_tracking = position_history,
+							current_position = contact.position,
+							dcsRepresentation = contact.dcsRepresentation,
+							typeName = contact.typeName,
+							contactAlive = "true"
+						}
+					elseif team_alegence == 0 then
+						env.info("Contact Was Declared Team 0")
+					end
+				elseif contact and not contact:isExist() then
+					local unitName = contact:getName()
+					if redRadarContacts[unitName] then
+						redRadarContacts[unitName].contactAlive = false
+					elseif blueRadarContacts[unitName] then
+						blueRadarContacts[unitName].contactAlive = false
+					end
+				end	
 				self:mergeContact(contact)
 			end
 		end
@@ -1516,12 +1680,24 @@ function SkynetIADS.evaluateContacts(self)
 	for samName, samToTrigger in pairs(samSitesToTrigger) do
 		for j = 1, #self.contacts do
 			local contact = self.contacts[j]
+			-- EDIT # 5 - Skip objects with CIV in object name.
 			-- the DCS Radar only returns enemy aircraft, if that should change a coalition check will be required
 			-- currently every type of object in the air is handed of to the SAM site, including missiles
 			local description = contact:getDesc()
 			local category = description.category
-			if category and category ~= Unit.Category.GROUND_UNIT and category ~= Unit.Category.SHIP and category ~= Unit.Category.STRUCTURE then
+			local unitName
+			local civ_check
+			if category and category == Object.Category.WEAPON then
+				civ_check = false
+				unitName = "WEAPON"
+			else
+				unitName = contact.dcsRepresentation:getName()
+				civ_check = isCivilian(unitName)
+			end
+			if category and category ~= Unit.Category.GROUND_UNIT and category ~= Unit.Category.SHIP and category ~= Unit.Category.STRUCTURE and civ_check == false then
+				-- env.info("civ_check returned: " .. tostring(civ_check) .. " on Object " .. unitName .. "informOfContact ran")
 				samToTrigger:informOfContact(contact)
+				samToTrigger:monitorSAMContacts(contact)
 			end
 		end
 	end
@@ -2669,8 +2845,30 @@ function SkynetIADSAbstractRadarElement:goLive()
 		if self:isDestroyed() == false then
 			local  cont = self:getController()
 			cont:setOnOff(true)
+			cont:setOption(AI.Option.Ground.id.ALARM_STATE, AI.Option.Ground.val.ALARM_STATE.RED)
+			cont:setOption(AI.Option.Ground.id.ROE, 1)
+			self:getDCSRepresentation():enableEmission(true)
+			self.goLiveTime = timer.getTime()
+			self.aiState = true
+		end
+		self:pointDefencesStopActingAsEW()
+		if  self.iads:getDebugSettings().radarWentLive then
+			self.iads:printOutputToLog("GOING LIVE: "..self:getDescription())
+		end
+		self:scanForHarms()
+	end
+end
+
+-- EDIT #4 Add the goEWLive() method to allow radar to come up but not shoot
+function SkynetIADSAbstractRadarElement:goEWLive()
+	if ( self.aiState == false and self:hasWorkingPowerSource() and self.harmSilenceID == nil) 
+	and (self:hasRemainingAmmo() == true  )
+	then
+		if self:isDestroyed() == false then
+			local  cont = self:getController()
+			cont:setOnOff(true)
 			cont:setOption(AI.Option.Ground.id.ALARM_STATE, AI.Option.Ground.val.ALARM_STATE.RED)	
-			cont:setOption(AI.Option.Air.id.ROE, AI.Option.Air.val.ROE.WEAPON_FREE)
+			cont:setOption(AI.Option.Ground.id.ROE, AI.Option.Ground.val.ROE.WEAPON_HOLD)
 			self:getDCSRepresentation():enableEmission(true)
 			self.goLiveTime = timer.getTime()
 			self.aiState = true
@@ -2819,7 +3017,7 @@ function SkynetIADSAbstractRadarElement:jam(successProbability)
 					self.iads:printOutputToLog("JAMMER: "..self:getDescription()..": jammed, setting to weapon hold")
 				end
 			else
-				controller:setOption(AI.Option.Air.id.ROE, AI.Option.Air.val.ROE.WEAPON_FREE)
+				controller:setOption(AI.Option.Ground.id.ROE, AI.Option.Ground.val.ROE.WEAPON_HOLD)
 				if self.iads:getDebugSettings().jammerProbability then
 					self.iads:printOutputToLog("JAMMER: "..self:getDescription()..": jammed, setting to weapon free")
 				end
@@ -3025,7 +3223,9 @@ function SkynetIADSAbstractRadarElement.evaluateIfTargetsContainHARMs(self)
 	self:cleanUpOldObjectsIdentifiedAsHARMS()
 end
 
+
 end
+
 do
 --this class is currently used for AWACS and Ships, at a latter date a separate class for ships could be created, currently not needed
 SkynetIADSAWACSRadar = {}
@@ -3615,10 +3815,63 @@ function SkynetIADSSamSite:targetCycleUpdateEnd()
 end
 
 function SkynetIADSSamSite:informOfContact(contact)
+	for i = 1, #contact.abstractRadarElementsDetected do
+		local radarElement = contact.abstractRadarElementsDetected[i]
+		if radarElement then
+		-- env.info("radarElement:  " .. safeDumpTable(radarElement))
+			local controller = radarElement:getController()
+			if controller then
+				controller:setOnOff(true)
+				controller:setOption(AI.Option.Ground.id.ALARM_STATE, AI.Option.Ground.val.ALARM_STATE.RED)	
+				controller:setOption(AI.Option.Ground.id.ROE, 1)
+				self:goLive()
+			end
+		end
+		-- env.info(tostring(radarElement:getDCSRepresentation():getName()))
+	end
 	-- we make sure isTargetInRange (expensive call) is only triggered if no previous calls to this method resulted in targets in range
 	if ( self.targetsInRange == false and self:areGoLiveConstraintsSatisfied(contact) == true and self:isTargetInRange(contact) and ( contact:isIdentifiedAsHARM() == false or ( contact:isIdentifiedAsHARM() == true and self:getCanEngageHARM() == true ) ) ) then
 		self:goLive()
 		self.targetsInRange = true
+	end
+end
+
+-- EDIT 10 Adding the function to track when a target dies to put SAMs that are configured with actAsEW back in weapons hold.
+
+function SkynetIADSSamSite:monitorSAMContacts(contact)
+	if contact then
+		local unitName = contact:getName()
+		if redRadarContacts[unitName] and redRadarContacts[unitName].contactAlive == false then
+			for i = 1, #contact.abstractRadarElementsDetected do
+				local radarElement = contact.abstractRadarElementsDetected[i]
+				if radarElement then
+					-- env.info("radarElement:  " .. safeDumpTable(radarElement))
+					local controller = radarElement:getController()
+					if controller then
+						controller:setOnOff(true)
+						controller:setOption(AI.Option.Ground.id.ALARM_STATE, AI.Option.Ground.val.ALARM_STATE.RED)	
+						controller:setOption(AI.Option.Ground.id.ROE, AI.Option.Ground.val.ROE.WEAPON_HOLD)
+					end
+				end
+			end
+		elseif blueRadarContacts[unitName] and blueRadarContacts[unitName].contactAlive == false then
+			for i = 1, #contact.abstractRadarElementsDetected do
+				local radarElement = contact.abstractRadarElementsDetected[i]
+				if radarElement then
+					local controller = radarElement:getController()
+					env.info("!!!!!!!!!!!!!!!!!!!!!!!!! = Controller:  " .. safeDumpTable(controller))
+					env.info("!!!!!!!!!!!!!!!!!!!!!!!!! - " .. controller)
+					if controller then
+						controller:setOnOff(true)
+						controller:setOption(AI.Option.Ground.id.ALARM_STATE, AI.Option.Ground.val.ALARM_STATE.RED)	
+						controller:setOption(AI.Option.Ground.id.ROE, AI.Option.Ground.val.ROE.WEAPON_HOLD)
+					end
+				end
+			end
+		end		
+	else
+		env.warning("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! - contact variable does not exsist or is NIL")
+		-- env.info(safeDumpTable(contact))
 	end
 end
 
