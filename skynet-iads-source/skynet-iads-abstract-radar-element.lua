@@ -544,6 +544,28 @@ function SkynetIADSAbstractRadarElement:goLive()
 	end
 end
 
+-- EDIT # Add the goEWLive() method to allow radar to come up but not shoot
+function SkynetIADSAbstractRadarElement:goEWLive()
+	if ( self.aiState == false and self:hasWorkingPowerSource() and self.harmSilenceID == nil) 
+	and (self:hasRemainingAmmo() == true  )
+	then
+		if self:isDestroyed() == false then
+			local  cont = self:getController()
+			cont:setOnOff(true)
+			cont:setOption(AI.Option.Ground.id.ALARM_STATE, AI.Option.Ground.val.ALARM_STATE.RED)	
+			cont:setOption(AI.Option.Ground.id.ROE, AI.Option.Ground.val.ROE.WEAPON_HOLD)
+			self:getDCSRepresentation():enableEmission(true)
+			self.goLiveTime = timer.getTime()
+			self.aiState = true
+		end
+		self:pointDefencesStopActingAsEW()
+		if  self.iads:getDebugSettings().radarWentLive then
+			self.iads:printOutputToLog("GOING LIVE: "..self:getDescription())
+		end
+		self:scanForHarms()
+	end
+end
+
 function SkynetIADSAbstractRadarElement:pointDefencesStopActingAsEW()
 	for i = 1, #self.pointDefences do
 		local pointDefence = self.pointDefences[i]
